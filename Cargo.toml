@@ -1,0 +1,25 @@
+[package]
+authors = ["Vikram Auradkar <vikram.auradkar@gmail.com>"]
+description = "Track, checkpoint, and resume long-running operations with detailed progress reporting"
+edition = "2024"
+homepage = "https://github.com/vauradkar/foothold"
+keywords = ["batch", "persistence", "session", "state", "statistics"]
+license = "MIT OR Apache-2.0"
+name = "foothold"
+readme = "README.md"
+repository = "https://github.com/vauradkar/foothold"
+version = "0.1.0"
+
+[lints.rust]
+missing_docs = { level = "warn" }
+rust-2024-compatibility = { level = "warn" }
+unsafe_code = { level = "warn" }
+
+[dependencies]
+chrono = "0.4.42"
+serde = "1.0.228"
+serde_json = "1.0.149"
+
+[dev-dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+tempfile = "3.24.0"

@@ -1,0 +1,8 @@
+{
+    "rust-analyzer.check.features": "all",
+    "rust-analyzer.trace.server": "verbose",
+    "debug.showSubSessionsInToolBar": false,
+    "rust-analyzer.rustfmt.extraArgs": [
+        "+nightly"
+    ],
+}
