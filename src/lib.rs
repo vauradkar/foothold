@@ -227,6 +227,12 @@ impl Display for Stats {
     }
 }
 
+/// Marker trait for types used as keys in Foothold, requiring serialization,
+/// deserialization, equality, and hashing.
+pub trait FootholdGType: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash {}
+
+impl<T: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash> FootholdGType for T {}
+
 /// Maintains the successful and failed tasks for a session.
 ///
 /// # Type Parameters
@@ -239,9 +245,9 @@ impl Display for Stats {
 /// load/save session state from files.
 struct SessionState<T, S, F>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
-    S: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
-    F: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
+    T: FootholdGType,
+    S: FootholdGType,
+    F: FootholdGType,
 {
     successful: HashMap<T, S>,
     failed: HashMap<T, F>,
@@ -249,9 +255,9 @@ where
 
 impl<T, S, F> SessionState<T, S, F>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
-    S: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
-    F: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
+    T: FootholdGType,
+    S: FootholdGType,
+    F: FootholdGType,
 {
     /// Creates a new, empty `SessionState` with no successful or failed tasks.
     pub fn new() -> Self {
@@ -345,9 +351,9 @@ where
 /// thread-safe, user-facing API.
 struct FootholdInner<T, S, F>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
-    S: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
-    F: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
+    T: FootholdGType,
+    S: FootholdGType,
+    F: FootholdGType,
 {
     current: SessionState<T, S, F>,
     previous: SessionState<T, S, F>,
@@ -361,9 +367,9 @@ where
 
 impl<T, S, F> FootholdInner<T, S, F>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
-    S: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
-    F: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
+    T: FootholdGType,
+    S: FootholdGType,
+    F: FootholdGType,
 {
     /// Creates a new `FootholdInner`, loading previous session state and
     /// opening files for writing.
@@ -499,20 +505,21 @@ where
 ///
 /// This struct provides a thread-safe API for marking tasks as successful or
 /// failed, and for retrieving session statistics.
+#[derive(Clone)]
 pub struct Foothold<T, S, F>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
-    S: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
-    F: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
+    T: FootholdGType,
+    S: FootholdGType,
+    F: FootholdGType,
 {
     inner: Arc<Mutex<FootholdInner<T, S, F>>>,
 }
 
 impl<T, S, F> Foothold<T, S, F>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
-    S: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
-    F: Serialize + for<'de> Deserialize<'de> + Eq + std::hash::Hash,
+    T: FootholdGType,
+    S: FootholdGType,
+    F: FootholdGType,
 {
     /// Creates a new `Foothold` instance, loading previous session state and
     /// opening files for writing.
@@ -571,27 +578,39 @@ where
     ///
     /// If the task was already successful in a previous session, it is counted
     /// as skipped.
-    pub fn mark_successful(
-        &mut self,
-        task: T,
-        success: S,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn mark_successful(&self, task: T, success: S) -> Result<(), Box<dyn std::error::Error>> {
         self.inner.lock().unwrap().mark_successful(task, success)
     }
 
     /// Marks a task as failed, persists it to file, and updates statistics.
-    pub fn mark_failed(&mut self, task: T, failure: F) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn mark_failed(&self, task: T, failure: F) -> Result<(), Box<dyn std::error::Error>> {
         self.inner.lock().unwrap().mark_failed(task, failure)
     }
 
     /// Marks a task as skipped, as it was successful during previous session.
-    pub fn mark_skipped(&mut self, task: T) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn mark_skipped(&self, task: T) -> Result<(), Box<dyn std::error::Error>> {
         self.inner.lock().unwrap().mark_skipped(task)
     }
 
     /// Returns statistics for the current and previous session.
     pub fn stats(&self) -> Stats {
         self.inner.lock().unwrap().stats()
+    }
+
+    /// Update total
+    pub fn update_total(&self, total: usize) {
+        self.inner.lock().unwrap().total = total;
+    }
+}
+
+impl<T, S, F> Display for Foothold<T, S, F>
+where
+    T: FootholdGType,
+    S: FootholdGType,
+    F: FootholdGType,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.stats())
     }
 }
 
@@ -686,7 +705,7 @@ mod tests {
         let failed_file = tempfile::NamedTempFile::new().unwrap();
         let successful = successful_file.path();
         let failed = failed_file.path();
-        let mut foothold = Foothold::<Task, Success, Failure>::new(successful, failed, 2).unwrap();
+        let foothold = Foothold::<Task, Success, Failure>::new(successful, failed, 2).unwrap();
         let t1 = Task("a".into());
         let t2 = Task("b".into());
         foothold
@@ -707,7 +726,7 @@ mod tests {
         let failed_file = tempfile::NamedTempFile::new().unwrap();
         let successful = successful_file.path();
         let failed = failed_file.path();
-        let mut foothold = Foothold::<Task, Success, Failure>::new(successful, failed, 1).unwrap();
+        let foothold = Foothold::<Task, Success, Failure>::new(successful, failed, 1).unwrap();
         let t1 = Task("fail".into());
         foothold
             .mark_failed(t1.clone(), Failure("err".into()))
@@ -729,7 +748,7 @@ mod tests {
             // Write a valid JSON tuple: (Task, Success)
             writeln!(file, "[\"already_done\",\"ok_prev\"]").unwrap();
         }
-        let mut foothold = Foothold::<Task, Success, Failure>::new(successful, failed, 1).unwrap();
+        let foothold = Foothold::<Task, Success, Failure>::new(successful, failed, 1).unwrap();
         let t1 = Task("already_done".into());
         assert!(foothold.is_successful(&t1));
         foothold
